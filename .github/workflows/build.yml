@@ -42,11 +42,13 @@ jobs:
           sudo apt-get install -y qemu-utils rsync curl git xz-utils
 
       - name: Build Armbian Image
+        env:
+          COLUMNS: 160
         run: |
           # Use the input board or default to uefi-x86
           SELECTED_BOARD="${{ github.event.inputs.board || 'uefi-x86' }}"
           echo "Building for board: $SELECTED_BOARD"
-          sudo ./build.sh "$SELECTED_BOARD"
+          sudo -E ./build.sh "$SELECTED_BOARD"
 
       - name: Prepare Artifacts
         run: |
