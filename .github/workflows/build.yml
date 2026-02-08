@@ -71,19 +71,27 @@ jobs:
         run: |
           mkdir -p final_output
           echo "Compressing images (this may take a while)..."
-          # Use xz with multi-threading (-T0) and high compression (-9)
-          # We only compress .img and .vmdk files
-          cd armbian/output/images/
-          for f in *.img *.vmdk; do
-            if [ -f "$f" ]; then
-              echo "Compressing $f..."
-              xz -v -T0 -9 "$f"
-            fi
-          done
-          cd -
           
-          # Move compressed files to final_output
-          mv armbian/output/images/*.xz final_output/ 2>/dev/null || true
+          # The images are actually in the location where armbian/ was symlinked
+          # Based on our build step, that is /mnt/armbian-build/output/images/
+          IMAGE_DIR="/mnt/armbian-build/output/images"
+          
+          if [ -d "$IMAGE_DIR" ]; then
+            cd "$IMAGE_DIR"
+            for f in *.img *.vmdk; do
+              if [ -f "$f" ]; then
+                echo "Compressing $f..."
+                xz -v -T0 -9 "$f"
+              fi
+            done
+            cd -
+            # Move compressed files to final_output in the current workspace
+            mv "$IMAGE_DIR"/*.xz final_output/ 2>/dev/null || true
+          else
+            echo "Error: Directory $IMAGE_DIR does not exist. Check if build failed or directory structure changed."
+            ls -R /mnt/armbian-build/ || true
+            exit 1
+          fi
           
           echo "Contents of final_output:"
           ls -lh final_output/
