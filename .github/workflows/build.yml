@@ -37,8 +37,8 @@ jobs:
           sudo rm -rf /usr/local/lib/node_modules
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           sudo apt-get clean
-          # Removing large packages
-          sudo apt-get purge -y azure-cli google-cloud-sdk microsoft-edge-dev google-chrome-stable firefox powershell mono-devel
+          # Removing large packages (ignore errors if package not found)
+          sudo apt-get purge -y azure-cli google-cloud-sdk google-chrome-stable firefox powershell mono-devel || true
           sudo apt-get autoremove -y
           # Wipe Docker images and data
           sudo docker image prune -a -f
@@ -58,6 +58,13 @@ jobs:
           # Use the input board or default to uefi-x86
           SELECTED_BOARD="${{ github.event.inputs.board || 'uefi-x86' }}"
           echo "Building for board: $SELECTED_BOARD"
+          
+          # Create build dir on the larger /mnt disk and symlink to it
+          # This provides ~60GB+ additional space
+          sudo mkdir -p /mnt/armbian-build
+          sudo chown runner:runner /mnt/armbian-build
+          ln -s /mnt/armbian-build armbian
+          
           sudo -E ./build.sh "$SELECTED_BOARD"
 
       - name: Prepare Artifacts
