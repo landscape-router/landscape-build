@@ -49,7 +49,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-utils rsync curl git xz-utils
+          sudo apt-get install -y qemu-utils rsync curl git xz-utils libelf-dev bc libssl-dev flex bison
 
       - name: Move Project to /mnt and Build
         env:
@@ -60,18 +60,17 @@ jobs:
           echo "Building for board: $SELECTED_BOARD"
           
           # 1. Prepare workspace on the larger /mnt disk
-          # This provides ~60GB+ additional space
           BUILD_ROOT="/mnt/landscape-build"
           sudo mkdir -p "$BUILD_ROOT"
           sudo chown runner:runner "$BUILD_ROOT"
           
-          # 2. Move everything from GITHUB_WORKSPACE to /mnt
-          # Note: We move everything so that paths inside scripts stay relative
+          # 2. Copy project files
           cp -r . "$BUILD_ROOT/"
           cd "$BUILD_ROOT"
           
-          # 3. Run build
-          sudo -E ./build.sh "$SELECTED_BOARD"
+          # 3. Run build as normal user (runner)
+          # Armbian will use sudo internally when needed
+          ./build.sh "$SELECTED_BOARD"
           
           # 4. Save the absolute path for the next step
           echo "IMAGE_DIR=$BUILD_ROOT/armbian/output/images" >> $GITHUB_ENV
