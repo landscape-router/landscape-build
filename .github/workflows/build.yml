@@ -51,7 +51,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y qemu-utils rsync curl git xz-utils
 
-      - name: Build Armbian Image
+      - name: Move Project to /mnt and Build
         env:
           COLUMNS: 160
         run: |
@@ -59,22 +59,27 @@ jobs:
           SELECTED_BOARD="${{ github.event.inputs.board || 'uefi-x86' }}"
           echo "Building for board: $SELECTED_BOARD"
           
-          # Create build dir on the larger /mnt disk and symlink to it
+          # 1. Prepare workspace on the larger /mnt disk
           # This provides ~60GB+ additional space
-          sudo mkdir -p /mnt/armbian-build
-          sudo chown runner:runner /mnt/armbian-build
-          ln -s /mnt/armbian-build armbian
+          BUILD_ROOT="/mnt/landscape-build"
+          sudo mkdir -p "$BUILD_ROOT"
+          sudo chown runner:runner "$BUILD_ROOT"
           
+          # 2. Move everything from GITHUB_WORKSPACE to /mnt
+          # Note: We move everything so that paths inside scripts stay relative
+          cp -r . "$BUILD_ROOT/"
+          cd "$BUILD_ROOT"
+          
+          # 3. Run build
           sudo -E ./build.sh "$SELECTED_BOARD"
+          
+          # 4. Save the absolute path for the next step
+          echo "IMAGE_DIR=$BUILD_ROOT/armbian/output/images" >> $GITHUB_ENV
 
       - name: Prepare Artifacts
         run: |
           mkdir -p final_output
-          echo "Compressing images (this may take a while)..."
-          
-          # The images are actually in the location where armbian/ was symlinked
-          # Based on our build step, that is /mnt/armbian-build/output/images/
-          IMAGE_DIR="/mnt/armbian-build/output/images"
+          echo "Compressing images from $IMAGE_DIR..."
           
           if [ -d "$IMAGE_DIR" ]; then
             cd "$IMAGE_DIR"
@@ -85,11 +90,10 @@ jobs:
               fi
             done
             cd -
-            # Move compressed files to final_output in the current workspace
-            mv "$IMAGE_DIR"/*.xz final_output/ 2>/dev/null || true
+            # Move compressed files to final_output in the original workspace
+            mv "$IMAGE_DIR"/*.xz $GITHUB_WORKSPACE/final_output/ 2>/dev/null || true
           else
-            echo "Error: Directory $IMAGE_DIR does not exist. Check if build failed or directory structure changed."
-            ls -R /mnt/armbian-build/ || true
+            echo "Error: Directory $IMAGE_DIR does not exist."
             exit 1
           fi
           
