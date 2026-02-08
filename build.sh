@@ -24,7 +24,7 @@ if [ ! -d "$ARMBIAN_DIR" ]; then
     echo "============================================================"
     echo "Armbian directory not found. Cloning $ARMBIAN_VERSION..."
     echo "============================================================"
-    git clone --depth 1 --branch "$ARMBIAN_VERSION" "$ARMBIAN_REPO" "$ARMBIAN_DIR"
+    git clone --branch "$ARMBIAN_VERSION" "$ARMBIAN_REPO" "$ARMBIAN_DIR"
     if [ $? -ne 0 ]; then
         echo "Error: Failed to clone Armbian repository."
         exit 1
@@ -90,6 +90,10 @@ sync_userpatches() {
 
 # Run prep steps
 prepare_resources
+
+# Create a build_vars.sh to pass variables to customize-image.sh
+echo "ENABLE_MIRROR=\"$ENABLE_MIRROR\"" > "${OVERLAY_DIR}/build_vars.sh"
+
 sync_userpatches
 
 # =============================================================================

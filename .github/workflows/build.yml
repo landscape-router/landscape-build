@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - main
+      - ci
     paths:
       - 'userpatches/**'
       - 'build.sh'
@@ -18,7 +19,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-utils rsync curl git
+          sudo apt-get install -y qemu-utils rsync curl git xz-utils
 
       - name: Build Armbian Image
         run: |
@@ -50,9 +51,21 @@ jobs:
       - name: Prepare Artifacts
         run: |
           mkdir -p final_output
-          # Copy images and vmdk files
-          cp armbian/output/images/*.img* final_output/ 2>/dev/null || true
-          cp armbian/output/images/*.vmdk final_output/ 2>/dev/null || true
+          echo "Compressing images (this may take a while)..."
+          # Use xz with multi-threading (-T0) and high compression (-9)
+          # We only compress .img and .vmdk files
+          cd armbian/output/images/
+          for f in *.img *.vmdk; do
+            if [ -f "$f" ]; then
+              echo "Compressing $f..."
+              xz -v -T0 -9 "$f"
+            fi
+          done
+          cd -
+          
+          # Move compressed files to final_output
+          mv armbian/output/images/*.xz final_output/ 2>/dev/null || true
+          
           echo "Contents of final_output:"
           ls -lh final_output/
 
