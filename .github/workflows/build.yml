@@ -85,7 +85,12 @@ jobs:
             for f in *.img *.vmdk; do
               if [ -f "$f" ]; then
                 echo "Compressing $f..."
-                xz --no-preserve=group -v -T0 -9 "$f"
+                if xz -c -v -T0 -9 "$f" > "$f.xz"; then
+                  rm -f "$f"
+                else
+                  rm -f "$f.xz"
+                  exit 1
+                fi
               fi
             done
             cd -
