@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e
+export COLUMNS=${COLUMNS:-160}
 
 # =============================================================================
 # Configuration & Prep
@@ -20,11 +22,14 @@ fi
 ARMBIAN_DIR="armbian"
 
 # Ensure Armbian build system exists
-if [ ! -d "$ARMBIAN_DIR" ]; then
+# Check for compile.sh instead of just the directory to handle empty symlinks in CI
+if [ ! -f "$ARMBIAN_DIR/compile.sh" ]; then
     echo "============================================================"
-    echo "Armbian directory not found. Cloning $ARMBIAN_VERSION..."
+    echo "Armbian build system not found or incomplete. Cloning $ARMBIAN_VERSION..."
     echo "============================================================"
-    git clone --depth 1 --branch "$ARMBIAN_VERSION" "$ARMBIAN_REPO" "$ARMBIAN_DIR"
+    # If it's a symlink to an empty dir, we might need to clone into it
+    # Git clone usually requires the directory to be empty
+    git clone --branch "$ARMBIAN_VERSION" "$ARMBIAN_REPO" "$ARMBIAN_DIR"
     if [ $? -ne 0 ]; then
         echo "Error: Failed to clone Armbian repository."
         exit 1
@@ -90,6 +95,10 @@ sync_userpatches() {
 
 # Run prep steps
 prepare_resources
+
+# Create a build_vars.sh to pass variables to customize-image.sh
+echo "ENABLE_MIRROR=\"$ENABLE_MIRROR\"" > "${OVERLAY_DIR}/build_vars.sh"
+
 sync_userpatches
 
 # =============================================================================

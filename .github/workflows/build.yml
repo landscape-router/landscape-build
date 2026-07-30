@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - main
+      - ci
     paths:
       - 'userpatches/**'
       - 'build.sh'
@@ -18,7 +19,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,28 +32,84 @@ jobs:
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/lib/node_modules
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get clean
+          # Removing large packages (ignore errors if package not found)
+          sudo apt-get purge -y azure-cli google-cloud-sdk google-chrome-stable firefox powershell mono-devel || true
+          sudo apt-get autoremove -y
+          # Wipe Docker images and data
+          sudo docker image prune -a -f
+          sudo docker system prune -a -f --volumes
           echo "After cleanup:"
           df -h
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-utils rsync curl git
+          sudo apt-get install -y qemu-utils qemu-user-static binfmt-support rsync curl git xz-utils libelf-dev bc libssl-dev flex bison
 
-      - name: Build Armbian Image
+      - name: Setup binfmt for cross-arch builds
+        run: |
+          # Register userspace emulators on the host so Armbian Docker build can run arm64 rootfs tools.
+          sudo docker run --rm --privileged tonistiigi/binfmt --install arm64,arm,riscv64
+          sudo update-binfmts --enable qemu-arm || true
+          sudo update-binfmts --enable qemu-aarch64 || true
+          sudo update-binfmts --enable qemu-riscv64 || true
+          arch-test arm64 || true
+
+      - name: Move Project to /mnt and Build
+        env:
+          COLUMNS: 160
         run: |
           # Use the input board or default to uefi-x86
           SELECTED_BOARD="${{ github.event.inputs.board || 'uefi-x86' }}"
           echo "Building for board: $SELECTED_BOARD"
-          sudo ./build.sh "$SELECTED_BOARD"
+          
+          # 1. Prepare workspace on the larger /mnt disk
+          BUILD_ROOT="/mnt/landscape-build"
+          sudo mkdir -p "$BUILD_ROOT"
+          sudo chown runner:runner "$BUILD_ROOT"
+          
+          # 2. Copy project files
+          cp -r . "$BUILD_ROOT/"
+          cd "$BUILD_ROOT"
+          
+          # 3. Run build as normal user (runner)
+          # Armbian will use sudo internally when needed
+          ./build.sh "$SELECTED_BOARD"
+          
+          # 4. Save the absolute path for the next step
+          echo "IMAGE_DIR=$BUILD_ROOT/armbian/output/images" >> $GITHUB_ENV
 
       - name: Prepare Artifacts
         run: |
           mkdir -p final_output
-          # Copy images and vmdk files
-          cp armbian/output/images/*.img* final_output/ 2>/dev/null || true
-          cp armbian/output/images/*.vmdk final_output/ 2>/dev/null || true
+          echo "Compressing images from $IMAGE_DIR..."
+          
+          if [ -d "$IMAGE_DIR" ]; then
+            cd "$IMAGE_DIR"
+            for f in *.img *.vmdk; do
+              if [ -f "$f" ]; then
+                echo "Compressing $f..."
+                if xz -c -v -T0 -9 "$f" > "$f.xz"; then
+                  rm -f "$f"
+                else
+                  rm -f "$f.xz"
+                  exit 1
+                fi
+              fi
+            done
+            cd -
+            # Move compressed files to final_output in the original workspace
+            mv "$IMAGE_DIR"/*.xz $GITHUB_WORKSPACE/final_output/ 2>/dev/null || true
+          else
+            echo "Error: Directory $IMAGE_DIR does not exist."
+            exit 1
+          fi
+          
           echo "Contents of final_output:"
           ls -lh final_output/
 

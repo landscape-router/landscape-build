@@ -27,8 +27,15 @@ EOF
 	rm -f /etc/resolv.conf
 	echo "nameserver 114.114.114.114" > /etc/resolv.conf
 
-	rm -f /etc/apt/sources.list
-    cat <<EOF > /etc/apt/sources.list
+	# 加载构建变量
+	if [ -f "/tmp/overlay/build_vars.sh" ]; then
+		source /tmp/overlay/build_vars.sh
+	fi
+
+	if [ "$ENABLE_MIRROR" == "yes" ]; then
+		echo "==== 正在启用清华源加速 ===="
+		rm -f /etc/apt/sources.list
+		cat <<EOF > /etc/apt/sources.list
 # 默认注释了源码镜像以提高 apt update 速度，如有需要可自行取消注释
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ ${RELEASE} main contrib non-free non-free-firmware
 # deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ ${RELEASE} main contrib non-free non-free-firmware
@@ -43,6 +50,9 @@ deb https://mirrors.tuna.tsinghua.edu.cn/debian/ ${RELEASE}-backports main contr
 deb https://mirrors.tuna.tsinghua.edu.cn/debian-security ${RELEASE}-security main contrib non-free non-free-firmware
 # deb-src https://mirrors.tuna.tsinghua.edu.cn/debian-security ${RELEASE}-security main contrib non-free non-free-firmware
 EOF
+	else
+		echo "==== 使用系统默认软件源 ===="
+	fi
 	apt update -y --fix-missing
 	# 安装基础软件
 	apt install -y ppp tcpdump bpftool iptables zip unzip dnsutils
