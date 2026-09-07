@@ -1,0 +1,45 @@
+Backport-style fix for riscv64 (SpacemiT K1): bpf_timer_init() failed
+unconditionally with -ENOMEM.
+
+kmalloc_nolock() (mm/slub.c) returns NULL on every architecture whose
+caches are not flagged __CMPXCHG_DOUBLE, i.e. those without a 128-bit
+compare-and-swap: x86 needs CPUID CX16, arm64/s390 always provide it,
+but riscv64 requires the Zacas extension (AMOCAS.Q) at runtime, which
+SpacemiT K1 (C920 cores) does not implement, and riscv does not select
+CONFIG_HAVE_CMPXCHG_DOUBLE in this tree either way.
+
+bpf_timer_init() is the only user of bpf_map_kmalloc_nolock() in this
+tree (kernel/bpf/helpers.c __bpf_async_init), so every bpf_timer_init()
+-- including the one in landscape's nat4_insert_ct() -- returned -ENOMEM
+and dropped all NATed flows.  x86/arm64 are unaffected.
+
+Fix follows the same direction as the upstream discussion
+"[PATCH bpf v3] bpf: do not use kmalloc_nolock when !HAVE_CMPXCHG_DOUBLE"
+(Levi Zim, 2026-03): keep kmalloc_nolock() where it is supported or
+required for correctness (PREEMPT_RT), and use a plain GFP_NOWAIT
+allocation otherwise.  GFP_NOWAIT never sleeps, so it is valid under the
+irqsave async->lock held in __bpf_async_init() and works on every
+architecture.  The free side (kfree_nolock) works on all architectures
+(it falls back to slab_lock) and needs no change.
+--- a/kernel/bpf/helpers.c
++++ b/kernel/bpf/helpers.c
+@@ -1295,7 +1295,18 @@
+ 		goto out;
+ 	}
+ 
+-	cb = bpf_map_kmalloc_nolock(map, size, 0, map->numa_node);
++	/*
++	 * kmalloc_nolock() always returns NULL on architectures without
++	 * CONFIG_HAVE_CMPXCHG_DOUBLE (e.g. riscv64 without Zacas), making
++	 * bpf_timer_init() fail with -ENOMEM unconditionally.  GFP_NOWAIT
++	 * never sleeps and is valid under the irqsave async->lock held
++	 * above; PREEMPT_RT keeps kmalloc_nolock() for correctness.
++	 */
++	if (!IS_ENABLED(CONFIG_HAVE_CMPXCHG_DOUBLE) && !IS_ENABLED(CONFIG_PREEMPT_RT))
++		cb = bpf_map_kmalloc_node(map, size, GFP_NOWAIT | __GFP_NOWARN | __GFP_NOMEMALLOC,
++					  map->numa_node);
++	else
++		cb = bpf_map_kmalloc_nolock(map, size, 0, map->numa_node);
+ 	if (!cb) {
+ 		ret = -ENOMEM;
+ 		goto out;

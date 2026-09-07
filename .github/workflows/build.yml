@@ -4,9 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       board:
-        description: 'Board to build (e.g., uefi-x86, mangopi-m28k)'
+        description: 'Board to build'
         required: true
         default: 'uefi-x86'
+        type: choice
+        options:
+          - uefi-x86
+          - mangopi-m28k
+          - nanopi-r5c
+          - nanopi-r2s
+          - orangepirv2
   push:
     branches:
       - main
@@ -19,7 +26,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    # Ubuntu 24.04 是 Armbian v26.x 原生支持的构建宿主机
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,7 +61,7 @@ jobs:
 
       - name: Setup binfmt for cross-arch builds
         run: |
-          # Register userspace emulators on the host so Armbian Docker build can run arm64 rootfs tools.
+          # Register userspace emulators on the host so Armbian Docker build can run arm64/riscv64 rootfs tools.
           sudo docker run --rm --privileged tonistiigi/binfmt --install arm64,arm,riscv64
           sudo update-binfmts --enable qemu-arm || true
           sudo update-binfmts --enable qemu-aarch64 || true

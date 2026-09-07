@@ -8,7 +8,15 @@ enable_in_boot = true
 wifi_mode = "undefined"
 
 [[ifaces]]
-name = "lan0"
+name = "eth1"
+create_dev_type = "no_need_to_create"
+controller_name = "br_lan"
+zone_type = "undefined"
+enable_in_boot = true
+wifi_mode = "undefined"
+
+[[ifaces]]
+name = "wlan0"
 create_dev_type = "no_need_to_create"
 controller_name = "br_lan"
 zone_type = "undefined"
@@ -33,7 +41,7 @@ custome_opts = []
 
 [[nats]]
 iface_name = "eth0"
-enable = true
+enable = false
 
 [nats.nat_config.tcp_range]
 start = 32768

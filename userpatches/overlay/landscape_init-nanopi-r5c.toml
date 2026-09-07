@@ -1,14 +1,18 @@
+version = "0.24.2"
+
 [[ifaces]]
 name = "wan"
+create_dev_type = "no_need_to_create"
 zone_type = "wan"
 enable_in_boot = true
-
+wifi_mode = "undefined"
 
 [[ifaces]]
 name = "lan"
+create_dev_type = "no_need_to_create"
 zone_type = "lan"
 enable_in_boot = true
-
+wifi_mode = "undefined"
 
 [[ipconfigs]]
 iface_name = "wan"
@@ -17,11 +21,23 @@ enable = true
 [ipconfigs.ip_model]
 t = "dhcpclient"
 default_router = true
+custome_opts = []
 
 [[nats]]
 iface_name = "wan"
 enable = true
 
+[nats.nat_config.tcp_range]
+start = 32768
+end = 65535
+
+[nats.nat_config.udp_range]
+start = 32768
+end = 65535
+
+[nats.nat_config.icmp_in_range]
+start = 32768
+end = 65535
 
 [[dhcpv4_services]]
 iface_name = "lan"
@@ -29,9 +45,10 @@ enable = true
 
 [dhcpv4_services.config]
 ip_range_start = "100.150.1.2"
-ip_range_end = "100.150.1.255"
 server_ip_addr = "100.150.1.10"
 network_mask = 24
+address_lease_time = 43200
+custom_options = []
 
 [[route_lans]]
 iface_name = "lan"
@@ -40,40 +57,3 @@ enable = true
 [[route_wans]]
 iface_name = "wan"
 enable = true
-
-[[static_nat_mappings]]
-enable = true
-remark = "Default DHCPv4 Client Port"
-lan_ipv4 = "0.0.0.0"
-ipv4_l4_protocol = [17]
-ipv6_l4_protocol = []
-
-[[static_nat_mappings.mapping_pair_ports]]
-wan_port = 68
-lan_port = 68
-
-[[static_nat_mappings]]
-enable = true
-remark = "Default DHCPv6 Client Port"
-lan_ipv6 = "::"
-ipv4_l4_protocol = []
-ipv6_l4_protocol = [17]
-
-[[static_nat_mappings.mapping_pair_ports]]
-wan_port = 546
-lan_port = 546
-
-[[static_nat_mappings]]
-enable = true
-remark = ""
-lan_ipv4 = "0.0.0.0"
-ipv4_l4_protocol = [6]
-ipv6_l4_protocol = []
-
-[[static_nat_mappings.mapping_pair_ports]]
-wan_port = 22
-lan_port = 22
-
-[[static_nat_mappings.mapping_pair_ports]]
-wan_port = 6443
-lan_port = 6443

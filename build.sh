@@ -15,7 +15,7 @@ else
     LANDSCAPE_REPO="https://github.com/ThisSeanZhang/landscape"
     ENABLE_KERNEL_CONFIGURE="no"
     ARMBIAN_REPO="https://github.com/armbian/build.git"
-    ARMBIAN_VERSION="v24.08"
+    ARMBIAN_VERSION="v26.5.1"
     echo "Warning: build.env not found, using defaults."
 fi
 
@@ -52,12 +52,15 @@ echo "Kernel Configure Mode: $ENABLE_KERNEL_CONFIGURE"
 RESOURCES=(
     "${DOWNLOAD_BASE}/landscape-webserver-x86_64|landscape-webserver-x86_64"
     "${DOWNLOAD_BASE}/landscape-webserver-aarch64|landscape-webserver-aarch64"
+    "${DOWNLOAD_BASE}/landscape-webserver-riscv64|landscape-webserver-riscv64"
     "${DOWNLOAD_BASE}/static.zip|static.zip"
 )
 
 USERPATCHES_DIR="userpatches"
 OVERLAY_DIR="${USERPATCHES_DIR}/overlay"
-KERNEL_CONFIG_DIR="${USERPATCHES_DIR}/kernel"
+# 注意：Armbian 读取用户内核配置的路径是 userpatches/config/kernel/linux-<family>-<branch>.config
+# （lib/functions/compilation/kernel-config.sh 中的 prepare_kernel_config_core_or_userpatches）
+KERNEL_CONFIG_DIR="${USERPATCHES_DIR}/config/kernel"
 
 # Ensure directories exist
 mkdir -p "$OVERLAY_DIR"
@@ -114,7 +117,7 @@ declare -A BOARD_CONFIGS=(
     ["mangopi-m28k"]="vendor no yes"
     ["nanopi-r5c"]="current no yes"
     ["nanopi-r2s"]="current no yes"
-    ["hinlink-h68k"]="current no yes"
+    ["orangepirv2"]="current no yes"    # Orange Pi RV2 (SpacemiT K1, riscv64)
     # 可以继续添加其他板子
 )
 
@@ -156,6 +159,15 @@ echo "参数: BRANCH=$BRANCH, BUILD_DESKTOP=$BUILD_DESKTOP, BUILD_MINIMAL=$BUILD
 # 执行编译
 # KERNEL_CONFIGURE 由 build.env 控制
 # 如果你需要重新配置内核，在 build.env 中将 ENABLE_KERNEL_CONFIGURE 设为 yes
+# BUILD_CPUTHREADS 为可选的编译并行度限制（内存小的机器建议降低，默认 -j(CPU*1.5)）
+EXTRA_ARGS=()
+if [ -n "${BUILD_CPUTHREADS:-}" ]; then
+    echo "Limiting kernel build threads to: -j$BUILD_CPUTHREADS"
+    EXTRA_ARGS+=("CPUTHREADS=$BUILD_CPUTHREADS")
+fi
+# 不安装内核头文件：appliance 镜像用不到。但部分 Armbian 版本该参数不生效，
+# headers 包的 postinst 需要 rootfs 里有 python3/libelf-dev/zlib 才能编译
+# resolve_btfids（BUILD_MINIMAL 下没有，会导致构建失败），故同时注入这些包兜底。
 ./compile.sh \
     build BOARD="$SELECTED_BOARD" \
     BRANCH="$BRANCH" \
@@ -164,7 +176,11 @@ echo "参数: BRANCH=$BRANCH, BUILD_DESKTOP=$BUILD_DESKTOP, BUILD_MINIMAL=$BUILD
     KERNEL_CONFIGURE="$ENABLE_KERNEL_CONFIGURE" \
     RELEASE=trixie \
     KERNEL_GIT=shallow \
-    NETWORKING_STACK="none"
+    NETWORKING_STACK="none" \
+    INSTALL_HEADERS="no" \
+    EXTRA_PACKAGES_ROOTFS="python3 libelf-dev zlib1g-dev" \
+    EXTRA_PACKAGES_ROOTFS_REFS="build:build.sh:0 build:build.sh:0 build:build.sh:0" \
+    "${EXTRA_ARGS[@]}"
 
 # Post-build logic: Sync kernel config back if configure mode was enabled
 if [ "$ENABLE_KERNEL_CONFIGURE" == "yes" ]; then

@@ -5,7 +5,14 @@ userpatches/*
 !userpatches/customize-image.sh
 
 # Kernel Configs (keep these!)
+# Armbian 实际读取的用户内核配置目录 (userpatches/config/kernel/linux-<family>-<branch>.config)
+!userpatches/config/
+!userpatches/config/kernel/
+
+# Kernel Patches (keep these!)
+# Armbian 用户内核补丁目录 (userpatches/kernel/<KERNELPATCHDIR>/*.patch，例如 backport 到 spacemit-6.18 的补丁)
 !userpatches/kernel/
+!userpatches/kernel/**
 
 # Overlay Configs (keep TOML files, ignore binaries)
 !userpatches/overlay/
@@ -15,11 +22,16 @@ userpatches/overlay/*
 # Legacy directory (if you plan to remove it later)
 sharefiles/
 
-# Armbian Build Artifacts (in case they are generated inside the submodule directory)
-armbian/output/
-armbian/userpatches/
-armbian/.tmp/
-armbian/cache/
+# Armbian build tree (cloned at build time by build.sh, fully generated)
+/armbian/
+
+# Debug / repro artifacts (JIT 最小复现工具包)
+# 打包产物与编译产物不入库，需要时用 debug/jit-repro-kit/build.sh 重新生成
+debug/*.tar.gz
+debug/jit-repro-kit/*.o
+debug/jit-repro-kit/bpffill
+debug/jit-repro-kit/bpfrun
+debug/jit-repro-kit/*.riscv64
 
 # Editor/Temp files
 *.swp

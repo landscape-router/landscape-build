@@ -14,8 +14,20 @@ Landscape Build is a customized image packaging solution based on the Armbian bu
 This project wraps and customizes the Armbian build system to achieve:
 - **Customized Kernel**: Pre-integrated with core features for network acceleration and monitoring such as eBPF and BTF.
 - **Auto Deployment**: Automatically downloads and installs Landscape Router and its static resources during the image building phase.
-- **Multi-platform Support**: Supports x86 (UEFI), MangoPi M28K, NanoPi R5C, and more.
+- **Multi-platform Support**: Supports x86 (UEFI), Orange Pi RV2 (riscv64), MangoPi M28K, NanoPi R5C, and more.
 - **Out-of-the-box**: Built-in services start automatically, and native network management is disabled to avoid conflicts.
+
+## 🧩 Supported Boards
+
+| Board ID | Board | Architecture | Kernel Branch | Notes |
+| --- | --- | --- | --- | --- |
+| `uefi-x86` | Generic UEFI x86_64 | x86_64 | current | Image is also converted to `.vmdk` for VMs |
+| `mangopi-m28k` | MangoPi M28K | arm64 | vendor | |
+| `nanopi-r5c` | NanoPi R5C | arm64 | current | |
+| `nanopi-r2s` | NanoPi R2S | arm64 | current | |
+| `orangepirv2` | Orange Pi RV2 (SpacemiT K1) | **riscv64** | current | Default: `eth0` = WAN, `eth1` bridged into `br_lan` = LAN |
+
+> The Orange Pi RV2 build requires Armbian ≥ `v26.5.1` (the first release carrying `orangepirv2` support, pinned in `build.env`). Since Docker's official apt repository does not ship riscv64 packages, riscv64 images install `docker.io` from the Debian repository instead.
 
 ## 🚀 How to Use
 
@@ -50,5 +62,7 @@ The project is integrated with GitHub CI, so you don't need a heavy build enviro
 
 If you need to make your own modifications, check these directories:
 - `userpatches/customize-image.sh`: Initialization script executed before the first run of the image.
-- `userpatches/overlay/`: Static resources and configuration files automatically copied into the image system during build.
+- `userpatches/overlay/`: Static resources and configuration files automatically copied into the image system during build. Board-specific network initialization uses the `landscape_init-<board>.toml` naming convention.
+- `userpatches/config/kernel/`: Kernel config overrides, read by Armbian as `linux-<family>-<branch>.config` (e.g. `linux-spacemit-current.config` for the Orange Pi RV2).
+- `userpatches/kernel/`: Kernel patches, applied on top of the Armbian patch series (e.g. `archive/spacemit-6.18/` backports the mainline riscv BPF JIT fix that allows `bpf_tail_call` in programs using bpf-to-bpf calls, required by the Landscape eBPF datapath on the Orange Pi RV2).
 - `build.env`: Configures Armbian version, Landscape version, and whether to enable the interactive kernel configuration menu.

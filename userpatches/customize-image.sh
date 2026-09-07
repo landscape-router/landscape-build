@@ -8,6 +8,10 @@ BUILD_DESKTOP=$4
 Main() {
 	echo "======================== arch: $BOARD ===================================="
 
+	# 目标机架构（amd64 / arm64 / riscv64），用于选择二进制和 Docker 安装源
+	DPKG_ARCH="$(dpkg --print-architecture)"
+	echo "==== 目标架构: $DPKG_ARCH ===="
+
 	# 彻底禁用 Armbian/Debian 原生联网功能，防止干扰 Landscape Router
 	echo "==== 正在禁用原生网络服务 ===="
 	systemctl disable systemd-resolved
@@ -63,20 +67,39 @@ EOF
 		apt install -y hostapd iw
 	fi
 
+	# NanoPi R5C：Armbian 自 2025.06 (commit 7f9e02b0a) 起把网口改名为 wan1/lan1，
+	# 目的只是配合 netplan 的接口匹配规则；本镜像不使用 netplan（已 mask），
+	# 这里覆盖 udev 规则，恢复端口命名为 wan/lan（与 landscape_init-nanopi-r5c.toml 对应）
+	if [ "$BOARD" = "nanopi-r5c" ]; then
+		echo "==== 正在为 $BOARD 恢复网口命名为 wan/lan ===="
+		cat > /etc/udev/rules.d/70-persistent-net.rules <<EOF
+SUBSYSTEM=="net", ACTION=="add", KERNELS=="0001:01:00.0", NAME:="lan"
+SUBSYSTEM=="net", ACTION=="add", KERNELS=="0002:01:00.0", NAME:="wan"
+EOF
+	fi
+
 	# docker install start
-	apt-get install -y ca-certificates curl
-	install -m 0755 -d /etc/apt/keyrings
-	curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-	chmod a+r /etc/apt/keyrings/docker.asc
+	# 注意：Docker 官方 apt 源（download.docker.com）不提供 riscv64 包，
+	# riscv64 板卡（如 Orange Pi RV2）改用 Debian 官方源的 docker.io
+	if [ "$DPKG_ARCH" = "riscv64" ]; then
+		echo "==== 正在通过 Debian 官方源安装 Docker (riscv64) ===="
+		apt install -y docker.io
+	else
+		apt-get install -y ca-certificates curl
+		install -m 0755 -d /etc/apt/keyrings
+		curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+		chmod a+r /etc/apt/keyrings/docker.asc
 
-	# Add the repository to Apt sources:
-	echo \
-	"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
-	$(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-	tee /etc/apt/sources.list.d/docker.list > /dev/null
-	apt-get update
+		# Add the repository to Apt sources:
+		echo \
+		"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+		$(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+		tee /etc/apt/sources.list.d/docker.list > /dev/null
+		apt-get update
 
-	apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+		apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+	fi
+	mkdir -p /etc/docker
 	cat <<EOF > /etc/docker/daemon.json
 {
 	"bip": "172.18.1.1/24",
@@ -89,13 +112,28 @@ EOF
 	# 注意：这些文件应在 build.sh 阶段预先下载并放入 userpatches/overlay/
 	# Armbian 构建过程会自动将 userpatches/overlay/ 下的文件挂载/复制到镜像内的 /tmp/overlay/
 
+	# 根据目标架构选择对应的 Landscape 可执行文件
+	case "$DPKG_ARCH" in
+		amd64)
+			TARGET_BIN="landscape-webserver-x86_64"
+			;;
+		arm64)
+			TARGET_BIN="landscape-webserver-aarch64"
+			;;
+		riscv64)
+			TARGET_BIN="landscape-webserver-riscv64"
+			;;
+		*)
+			echo "警告：未识别的架构 '$DPKG_ARCH'，回退使用 aarch64 二进制"
+			TARGET_BIN="landscape-webserver-aarch64"
+			;;
+	esac
+
 	if [ "$BOARD" = "uefi-x86" ]; then
-		TARGET_BIN="landscape-webserver-x86_64"
 		GRUB_CMD="net.ifnames=0 biosdevname=0"
 		sudo sed -i "s/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"$GRUB_CMD /" /etc/default/grub
 		sudo update-grub
 	else
-		TARGET_BIN="landscape-webserver-aarch64"
 		# 使用默认的方式进行命名
 		cat /boot/armbianEnv.txt
 		echo "extraargs=net.ifnames=0 biosdevname=0" | sudo tee -a /boot/armbianEnv.txt
